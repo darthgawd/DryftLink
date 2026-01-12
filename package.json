@@ -5,6 +5,8 @@
   "scripts": {
     "lint": "eslint .",
     "format": "prettier . --write"
+  },
+  "devDependencies": {
+    "prettier": "^3.7.4"
   }
 }
-
