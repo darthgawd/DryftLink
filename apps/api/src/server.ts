@@ -1,19 +1,31 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
+import sensible from "@fastify/sensible";
 import { env } from "./env.js";
 
-const app = Fastify({
-  logger: true
+const app = Fastify({ logger: true });
+
+await app.register(sensible);
+
+await app.register(cors, {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // non-browser clients
+    if (origin === "http://localhost:5173") return cb(null, true);
+    return cb(new Error("Not allowed"), false);
+  }
 });
 
-app.get("/health", async () => {
-  return { status: "ok" };
+await app.register(rateLimit, {
+  max: 100,
+  timeWindow: "1 minute"
 });
 
-app.listen({ port: env.API_PORT, host: "0.0.0.0" })
-  .then(() => {
-    app.log.info(`API listening on ${env.API_PORT}`);
-  })
-  .catch((err) => {
-    app.log.error(err);
-    process.exit(1);
-  });
+app.get("/health", async () => ({ status: "ok" }));
+
+app.setErrorHandler((err, _req, reply) => {
+  app.log.error(err);
+  reply.code(500).send({ error: "internal_error" });
+});
+
+app.listen({ port: env.API_PORT, host: "0.0.0.0" });
