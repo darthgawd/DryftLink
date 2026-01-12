@@ -1,5 +1,13 @@
-    node_modules
-    # Keep environment variables out of version control
-    .env
+node_modules
 
-    /src/generated/prisma
+# env files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# OS / editor noise
+.DS_Store
+.vscode/

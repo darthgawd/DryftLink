@@ -1,0 +1,15 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# enable pnpm
+RUN corepack enable
+
+# copy monorepo
+COPY . .
+
+# install deps once
+RUN pnpm install
+
+EXPOSE 3002
+CMD ["pnpm", "-C", "apps/api", "dev"]

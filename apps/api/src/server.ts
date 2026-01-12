@@ -4,8 +4,15 @@ import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import { env } from "./env.js";
 import { sitesRoutes } from "./routes/sites.js";
+import { checksRoutes } from "./routes/checks.js";
+import { authRoutes } from "./routes/auth.js";
+import jwt from "@fastify/jwt"; 
 
 const app = Fastify({ logger: true });
+
+await app.register(jwt, { 
+  secret: env.JWT_SECRET,
+});
 
 await app.register(sensible);
 
@@ -22,6 +29,8 @@ await app.register(rateLimit, {
   timeWindow: "1 minute"
 });
 
+await app.register(authRoutes);
+await app.register(checksRoutes);
 await app.register(sitesRoutes);
 
 app.get("/health", async () => ({ status: "ok" }));
