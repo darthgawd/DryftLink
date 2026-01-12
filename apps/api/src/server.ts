@@ -8,7 +8,7 @@ import { checksRoutes } from "./routes/checks.js";
 import { authRoutes } from "./routes/auth.js";
 import jwt from "@fastify/jwt"; 
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: 1024 * 1024  });
 
 await app.register(jwt, { 
   secret: env.JWT_SECRET,
@@ -18,8 +18,17 @@ await app.register(sensible);
 
 await app.register(cors, {
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // non-browser clients
-    if (origin === "http://localhost:5173") return cb(null, true);
+    // Allow specific origins from environment
+    const allowedOrigins = env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
+    if (origin && allowedOrigins.includes(origin)) {
+      return cb(null, true);
+    }
+
+    // Allow no-origin only in dev (curl/Postman)
+    if (!origin && env.NODE_ENV !== "production") {
+      return cb(null, true);
+    }
+
     return cb(new Error("Not allowed"), false);
   }
 });
