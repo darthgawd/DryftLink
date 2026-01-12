@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import { env } from "./env.js";
+import { sitesRoutes } from "./routes/sites.js";
 
 const app = Fastify({ logger: true });
 
@@ -20,6 +21,8 @@ await app.register(rateLimit, {
   max: 100,
   timeWindow: "1 minute"
 });
+
+await app.register(sitesRoutes);
 
 app.get("/health", async () => ({ status: "ok" }));
 

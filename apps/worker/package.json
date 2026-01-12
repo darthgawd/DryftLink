@@ -1,0 +1,9 @@
+{
+  "name": "@dryft/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "enqueue:test": "node --loader ts-node/esm src/enqueue.ts"
+  }
+}
