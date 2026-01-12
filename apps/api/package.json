@@ -1,0 +1,8 @@
+{
+  "name": "@dryft/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --loader ts-node/esm src/server.ts"
+  }
+}
