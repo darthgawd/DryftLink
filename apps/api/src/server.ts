@@ -45,8 +45,14 @@ await app.register(sitesRoutes);
 app.get("/health", async () => ({ status: "ok" }));
 
 app.setErrorHandler((err, _req, reply) => {
-  app.log.error(err);
+  if (env.NODE_ENV !== "production") {
+    app.log.error(err);
+  } else {
+    const e = err as Error & { code?: string };
+    app.log.error({ msg: e.message, code: e.code });
+  }
   reply.code(500).send({ error: "internal_error" });
 });
+
 
 app.listen({ port: env.API_PORT, host: "0.0.0.0" });

@@ -8,16 +8,36 @@ const SiteCreate = z.object({
   url: z.string().trim().url()
 });
 
+const SitesQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: z.string().cuid().optional()
+});
+
+
 export async function sitesRoutes(app: FastifyInstance) {
-  app.get("/sites", { preHandler: authenticate }, async (req) => {
+  app.get("/sites", { preHandler: authenticate }, async (req, reply) => {
     const userId = getUserId(req);
+  
+    const qParsed = SitesQuery.safeParse(req.query);
+    if (!qParsed.success) {
+      return reply.code(400).send({ error: "invalid_request", details: qParsed.error.flatten() });
+    }
+    const { limit, cursor } = qParsed.data;
+  
     const sites = await prisma.site.findMany({
       where: { userId },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
     });
-    return sites;
+  
+    const hasMore = sites.length > limit;
+    const items = hasMore ? sites.slice(0, limit) : sites;
+    const nextCursor = hasMore ? items[items.length - 1]?.id : null;
+  
+    return { items, nextCursor };
   });
-
+  
   app.post("/sites", { preHandler: authenticate }, async (req, reply) => {
     const parsed = SiteCreate.safeParse(req.body);
     if (!parsed.success) {
