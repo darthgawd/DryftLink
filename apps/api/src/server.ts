@@ -77,4 +77,14 @@ app.setErrorHandler((err, _req, reply) => {
 
 
 
-app.listen({ port: env.API_PORT, host: "0.0.0.0" });
+const server = await app.listen({ port: env.API_PORT, host: "0.0.0.0" });
+
+const shutdown = async (signal: string) => {
+  app.log.info(`${signal} received, shutting down gracefully`);
+  await app.close();
+  await prisma.$disconnect();
+  process.exit(0);
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

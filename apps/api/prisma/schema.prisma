@@ -14,6 +14,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   sites Site[]
+  siteChecks SiteCheck[]
 }
 
 model Site {
@@ -26,5 +27,23 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  checks SiteCheck[]
+
   @@unique([userId, url])
+}
+
+model SiteCheck {
+  id         String   @id @default(cuid())
+  siteId     String
+  userId     String
+  statusCode Int?
+  latencyMs  Int?
+  ok         Boolean  @default(false)
+  error      String?
+  checkedAt  DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, siteId, checkedAt])
 }
