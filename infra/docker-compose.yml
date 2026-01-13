@@ -34,7 +34,7 @@ services:
     env_file:
       - ./.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://dryft:${POSTGRES_PASSWORD}@postgres:5432/dryft
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       API_PORT: 3002
     ports:
@@ -52,7 +52,7 @@ services:
     env_file:
       - ./.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://dryft:${POSTGRES_PASSWORD}@postgres:5432/dryft
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       postgres:
