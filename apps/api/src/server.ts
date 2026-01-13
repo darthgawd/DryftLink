@@ -7,6 +7,13 @@ import { sitesRoutes } from "./routes/sites.js";
 import { checksRoutes } from "./routes/checks.js";
 import { authRoutes } from "./routes/auth.js";
 import jwt from "@fastify/jwt"; 
+import { prisma } from "./db.js";
+import { dryftQueue } from "./queue.js";
+import type { FastifyReply } from "fastify";
+
+function sendError(reply: FastifyReply, code: number, error: string, details?: unknown) {
+  return reply.code(code).send({ error, ...(details ? { details } : {}) });
+}
 
 const app = Fastify({ logger: true, bodyLimit: 1024 * 1024  });
 
@@ -42,7 +49,21 @@ await app.register(authRoutes);
 await app.register(checksRoutes);
 await app.register(sitesRoutes);
 
-app.get("/health", async () => ({ status: "ok" }));
+const withTimeout = <T>(p: Promise<T>, ms: number) =>
+  Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
+  ]);
+
+app.get("/health", async (_req, reply) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    await withTimeout(dryftQueue.getJobCounts(), 500); // <— add timeout
+    return { status: "ok" };
+  } catch {
+    return reply.code(503).send({ status: "degraded" });
+  }
+});
 
 app.setErrorHandler((err, _req, reply) => {
   if (env.NODE_ENV !== "production") {
@@ -51,8 +72,9 @@ app.setErrorHandler((err, _req, reply) => {
     const e = err as Error & { code?: string };
     app.log.error({ msg: e.message, code: e.code });
   }
-  reply.code(500).send({ error: "internal_error" });
+  return sendError(reply, 500, "internal_error");
 });
+
 
 
 app.listen({ port: env.API_PORT, host: "0.0.0.0" });
