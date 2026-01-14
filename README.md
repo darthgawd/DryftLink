@@ -1,3 +1,6 @@
+
+<img width="1024" height="1024" alt="dryftlink" src="https://github.com/user-attachments/assets/4ed849e5-c78d-44e7-81f6-c6712ea1b082" />
+
 # DryftLink
 
 DryftLink is a **community-first, self-hostable** monitoring project. Today it focuses on **uptime checks + uptime state tracking** (with anti-flapping confirmations). Future phases add alerting, incident timelines, and change detection.
