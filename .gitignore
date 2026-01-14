@@ -17,3 +17,8 @@ PROJECT-MEMORY.md
 .cursorrules
 CURSOR-RULES.md
 update-journal.md
+
+# Test scripts and summaries (keep local only)
+test-*.sh
+*-SUMMARY.md
+bug-journal.md
