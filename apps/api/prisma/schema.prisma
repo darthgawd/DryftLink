@@ -38,6 +38,10 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // scheduling
+  checkInterval        Int     @default(5) // minutes
+  isMonitoringEnabled  Boolean @default(true)
+
   // uptime monitoring
   checks       SiteCheck[]
   uptimeState  SiteUptimeState?
