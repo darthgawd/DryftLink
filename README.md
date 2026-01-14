@@ -1,21 +1,24 @@
 # DryftLink
 
-> Lightweight website monitoring backend with async job processing
+> Website observability platform that detects meaningful changes and links them to real-world impact
 
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 ## Overview
 
-Production-ready website monitoring backend for developers who need reliable uptime tracking without enterprise complexity.
+**DryftLink detects meaningful changes on websites and links them to real-world impact, so you know what changed and why it mattered.**
 
-**Features:**
-- JWT authentication
-- Site management (CRUD)
-- Async uptime checks (BullMQ + Redis)
-- PostgreSQL + Prisma ORM
-- Rate limiting & security
-- Docker Compose dev environment
+Most monitoring tools tell you *if* something happened. DryftLink tells you **what changed**, **when it changed**, and **why it mattered** — turning alerts into answers and monitoring into decision support.
+
+**Current Status:** Phase 1 (Uptime & Availability) - Core backend complete
+- JWT authentication & user management
+- Site CRUD operations
+- Async uptime checks with background workers
+- PostgreSQL + Prisma ORM with uptime state models
+- Production-ready infrastructure (Docker, rate limiting, security)
+
+**Coming Next:** Scheduled checks → Change detection → Impact correlation → AI summaries
 
 ## Architecture
 
@@ -25,9 +28,13 @@ Client → API (Fastify) → PostgreSQL
         Redis (BullMQ)
            ↓
         Worker → PostgreSQL
+          ↓
+    (Future: Change detection, impact correlation, AI summaries)
 ```
 
 **Stack:** Node.js 20 · TypeScript · Fastify · Prisma · PostgreSQL 16 · Redis 7 · BullMQ · Docker
+
+**Design Philosophy:** Logic-heavy, not infra-heavy. Predictable costs. No metric overload. Built for teams without enterprise budgets.
 
 ## Prerequisites
 
