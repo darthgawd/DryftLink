@@ -3,7 +3,7 @@
 
 # DryftLink
 
-DryftLink is a **community-first, self-hostable** monitoring project. Today it focuses on **uptime checks + uptime state tracking** (with anti-flapping confirmations). Future phases add alerting, incident timelines, and change detection.
+DryftLink is a **self-hostable** monitoring project. Today it focuses on **uptime checks + uptime state tracking** (with anti-flapping confirmations). Future phases add alerting, incident timelines, and change detection.
 
 ## What’s in the repo
 
