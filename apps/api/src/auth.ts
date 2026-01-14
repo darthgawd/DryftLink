@@ -1,8 +1,18 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import { connection as redis } from "./queue.js";
 
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     await request.jwtVerify();
+    
+    // Check if token is blacklisted (revoked)
+    const user = request.user as { sub: string; email: string; jti?: string };
+    if (user.jti) {
+      const blacklisted = await redis.get(`blacklist:${user.jti}`);
+      if (blacklisted) {
+        return reply.code(401).send({ error: "token_revoked" });
+      }
+    }
   } catch (err) {
     return reply.code(401).send({ error: "unauthorized" });
   }

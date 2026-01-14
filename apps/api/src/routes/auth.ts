@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import argon2 from "argon2";
+import { randomBytes } from "crypto";
 import { prisma } from "../db.js";
+import { connection as redis } from "../queue.js";
+import { authenticate } from "../auth.js";
 
 export async function authRoutes(app: FastifyInstance) {
   app.post(
@@ -31,7 +34,12 @@ export async function authRoutes(app: FastifyInstance) {
         select: { id: true, email: true }
       });
 
-      const token = app.jwt.sign({ sub: user.id, email: user.email }, { expiresIn: "7d" });
+      // Generate unique token ID for revocation capability
+      const jti = randomBytes(16).toString("hex");
+      const token = app.jwt.sign(
+        { sub: user.id, email: user.email, jti }, 
+        { expiresIn: "7d" }
+      );
 
       return reply.code(201).send({ token, user });
     }
@@ -60,9 +68,39 @@ export async function authRoutes(app: FastifyInstance) {
       const ok = await argon2.verify(user.passwordHash, body.password);
       if (!ok) return reply.code(401).send({ error: "invalid_credentials" });
 
-      const token = app.jwt.sign({ sub: user.id, email: user.email }, { expiresIn: "7d" });
+      // Generate unique token ID for revocation capability
+      const jti = randomBytes(16).toString("hex");
+      const token = app.jwt.sign(
+        { sub: user.id, email: user.email, jti }, 
+        { expiresIn: "7d" }
+      );
 
       return reply.send({ token, user: { id: user.id, email: user.email } });
+    }
+  );
+
+  // Logout endpoint - revokes the current token
+  app.post(
+    "/auth/logout",
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const user = req.user as { sub: string; email: string; jti?: string; exp: number };
+      
+      if (!user.jti) {
+        // Old token without jti (shouldn't happen after this update)
+        return reply.send({ message: "logged_out" });
+      }
+
+      // Calculate remaining TTL (time until token expires)
+      const now = Math.floor(Date.now() / 1000); // Current time in seconds
+      const ttl = user.exp - now; // Remaining seconds until expiration
+
+      if (ttl > 0) {
+        // Add token to blacklist with TTL matching token expiration
+        await redis.setex(`blacklist:${user.jti}`, ttl, "1");
+      }
+
+      return reply.send({ message: "logged_out" });
     }
   );
 }
