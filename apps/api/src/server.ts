@@ -11,6 +11,7 @@ import { prisma } from "./db.js";
 import { authRoutes } from "./routes/auth.js";
 import { checksRoutes } from "./routes/checks.js";
 import { sitesRoutes } from "./routes/sites.js";
+import { uptimeRoutes } from "./routes/uptime.js";
 
 function sendError(reply: FastifyReply, code: number, error: string, details?: unknown) {
   return reply.code(code).send({ error, ...(details ? { details } : {}) });
@@ -80,6 +81,7 @@ await app.register(rateLimit, {
 await app.register(authRoutes);
 await app.register(checksRoutes);
 await app.register(sitesRoutes);
+await app.register(uptimeRoutes);
 
 // Liveness only (no DB/Redis checks)
 app.get("/health", async () => ({ status: "ok" }));

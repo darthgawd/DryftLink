@@ -3,6 +3,7 @@ import { z } from "zod";
 import { connection, QUEUE_NAME } from "./queue.js";
 import { env } from "./env.js";
 import { prisma } from "./db.js";
+import { updateUptimeState } from "./uptime-state.js";
 
 const JobData = z.object({
   siteId: z.string().min(1)
@@ -62,7 +63,7 @@ export const worker = new Worker(
 
     const durationMs = Date.now() - startTime;
 
-    // Create SiteCheck record with new schema
+    // Create SiteCheck record
     await prisma.siteCheck.create({
       data: {
         siteId,
@@ -71,6 +72,14 @@ export const worker = new Worker(
         finalUrl,
         durationMs
       }
+    });
+
+    // Update uptime state machine
+    await updateUptimeState(siteId, {
+      status,
+      httpStatus,
+      finalUrl,
+      durationMs
     });
 
     return { status, httpStatus, durationMs };
