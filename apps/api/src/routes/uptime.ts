@@ -43,6 +43,8 @@ export async function uptimeRoutes(app: FastifyInstance) {
         lastHttpStatus: state.lastHttpStatus,
         lastFinalUrl: state.lastFinalUrl,
         lastDurationMs: state.lastDurationMs,
+        consecutiveFailures: state.consecutiveFailures,
+        consecutiveSuccesses: state.consecutiveSuccesses,
         changedAt: state.changedAt,
         updatedAt: state.updatedAt
       });

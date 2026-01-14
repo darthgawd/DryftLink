@@ -8,14 +8,16 @@ const SiteCreate = z.object({
   name: z.string().trim().min(2).max(80),
   url: z.string().trim().url(),
   checkInterval: z.coerce.number().int().min(1).max(1440).default(5), // 1 min to 24 hours
-  isMonitoringEnabled: z.boolean().default(true)
+  isMonitoringEnabled: z.boolean().default(true),
+  confirmationsRequired: z.coerce.number().int().min(1).max(10).default(2) // 1-10 consecutive failures
 });
 
 const SiteUpdate = z.object({
   name: z.string().trim().min(2).max(80).optional(),
   url: z.string().trim().url().optional(),
   checkInterval: z.coerce.number().int().min(1).max(1440).optional(),
-  isMonitoringEnabled: z.boolean().optional()
+  isMonitoringEnabled: z.boolean().optional(),
+  confirmationsRequired: z.coerce.number().int().min(1).max(10).optional()
 });
 
 const SiteIdParam = z.object({

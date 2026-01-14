@@ -1,0 +1,126 @@
+#!/bin/bash
+# DryftLink Quick Check CLI
+# Usage: dryft-check <url> [email] [password]
+
+set -e
+
+# Configuration
+API_URL="${DRYFT_API_URL:-http://localhost:3002}"
+DEFAULT_EMAIL="${DRYFT_EMAIL:-revoke-test@example.com}"
+DEFAULT_PASSWORD="${DRYFT_PASSWORD:-testpassword123}"
+
+# Parse arguments
+URL=$1
+EMAIL=${2:-$DEFAULT_EMAIL}
+PASSWORD=${3:-$DEFAULT_PASSWORD}
+
+if [ -z "$URL" ]; then
+  echo "Usage: dryft-check <url> [email] [password]"
+  echo ""
+  echo "Examples:"
+  echo "  dryft-check https://google.com"
+  echo "  dryft-check https://example.com user@email.com mypassword"
+  echo ""
+  echo "Environment variables:"
+  echo "  DRYFT_API_URL     API endpoint (default: http://localhost:3002)"
+  echo "  DRYFT_EMAIL       Login email (default: revoke-test@example.com)"
+  echo "  DRYFT_PASSWORD    Login password (default: testpassword123)"
+  exit 1
+fi
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+  echo "❌ Error: jq is not installed"
+  echo "Install with: brew install jq (macOS) or apt install jq (Linux)"
+  exit 1
+fi
+
+echo "🔍 Checking $URL..."
+echo ""
+
+# Login
+TOKEN=$(curl -s -X POST "$API_URL/auth/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" | jq -r '.token')
+
+if [ "$TOKEN" == "null" ] || [ -z "$TOKEN" ]; then
+  echo "❌ Login failed. Check your credentials."
+  exit 1
+fi
+
+# Create temporary site with unique URL (add random query param to avoid conflicts)
+RANDOM_SUFFIX="?_dryft_check=$RANDOM$(date +%s)"
+CHECK_URL="$URL$RANDOM_SUFFIX"
+
+SITE=$(curl -s -X POST "$API_URL/sites" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"Quick Check $(date +%s)\",\"url\":\"$CHECK_URL\",\"isMonitoringEnabled\":false,\"confirmationsRequired\":1}")
+
+SITE_ID=$(echo $SITE | jq -r '.id')
+
+if [ "$SITE_ID" == "null" ] || [ -z "$SITE_ID" ]; then
+  echo "❌ Failed to create check site"
+  echo "Error: $(echo $SITE | jq -r '.error // .message // "Unknown error"')"
+  exit 1
+fi
+
+# Trigger check
+curl -s -X POST "$API_URL/sites/$SITE_ID/check" \
+  -H "Authorization: Bearer $TOKEN" > /dev/null
+
+# Wait for check to complete (checks have 10s timeout)
+echo "⏳ Running check..."
+sleep 12
+
+# Get results
+RESULT=$(curl -s "$API_URL/sites/$SITE_ID/uptime" \
+  -H "Authorization: Bearer $TOKEN")
+
+STATE=$(echo $RESULT | jq -r '.state // "UNKNOWN"')
+STATUS=$(echo $RESULT | jq -r '.lastStatus // "PENDING"')
+HTTP_STATUS=$(echo $RESULT | jq -r '.lastHttpStatus // "N/A"')
+DURATION=$(echo $RESULT | jq -r '.lastDurationMs // "N/A"')
+FINAL_URL=$(echo $RESULT | jq -r '.lastFinalUrl // ""')
+
+# Display results with clear UP/DOWN status
+echo ""
+if [ "$STATUS" == "SUCCESS" ]; then
+  echo "✅ Site is UP"
+  echo "   HTTP $HTTP_STATUS"
+elif [ "$STATUS" == "ERROR" ]; then
+  echo "❌ Site is DOWN"
+  if [ "$HTTP_STATUS" != "N/A" ]; then
+    echo "   HTTP $HTTP_STATUS (ERROR)"
+  else
+    echo "   ERROR (no HTTP response)"
+  fi
+elif [ "$STATUS" == "TIMEOUT" ]; then
+  echo "❌ Site is DOWN"
+  echo "   TIMEOUT (no response within 10 seconds)"
+elif [ "$STATUS" == "BLOCKED" ]; then
+  echo "❌ Site is DOWN"
+  echo "   HTTP $HTTP_STATUS (BLOCKED - authentication required)"
+else
+  echo "⏳ Check PENDING (wait longer)"
+fi
+
+echo ""
+echo "Details:"
+echo "  Status:        $STATUS"
+if [ "$HTTP_STATUS" != "N/A" ]; then
+  echo "  HTTP Code:     $HTTP_STATUS"
+fi
+if [ "$DURATION" != "N/A" ]; then
+  echo "  Response Time: ${DURATION}ms"
+fi
+if [ -n "$FINAL_URL" ] && [ "$FINAL_URL" != "null" ]; then
+  echo "  Final URL:     $FINAL_URL"
+fi
+
+# Cleanup
+curl -s -X DELETE "$API_URL/sites/$SITE_ID" \
+  -H "Authorization: Bearer $TOKEN" > /dev/null
+
+echo ""
+echo "✅ Check complete"

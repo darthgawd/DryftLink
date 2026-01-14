@@ -42,6 +42,9 @@ model Site {
   checkInterval        Int     @default(5) // minutes
   isMonitoringEnabled  Boolean @default(true)
 
+  // confirmation (anti-flapping)
+  confirmationsRequired Int @default(2) // consecutive failures needed before DOWN
+
   // uptime monitoring
   checks       SiteCheck[]
   uptimeState  SiteUptimeState?
@@ -75,6 +78,10 @@ model SiteUptimeState {
   lastHttpStatus Int?
   lastFinalUrl   String?
   lastDurationMs Int?
+
+  // confirmation tracking
+  consecutiveFailures  Int @default(0)
+  consecutiveSuccesses Int @default(0)
 
   changedAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
