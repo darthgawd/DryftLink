@@ -924,6 +924,378 @@ curl -X POST http://localhost:3002/auth/register \
 
 ---
 
+### Bug #20: Prisma Migration Sync Issue
+
+**Date:** 2026-01-14  
+**File:** `apps/api/prisma/schema.prisma`  
+**Severity:** 🔴 High (blocking)
+
+**Error:**
+```
+Already in sync, no schema change or pending migration was found.
+```
+
+**Root Cause:**  
+Docker container had stale schema cached despite local schema.prisma changes. Container wasn't picking up the updated schema file.
+
+**Solution:**  
+Rebuilt API Docker container to force it to pick up the latest schema.
+
+**Commands:**
+```bash
+docker compose build api
+docker compose up -d api
+docker compose exec api pnpm prisma migrate dev
+```
+
+**Lesson Learned:**  
+Docker layer caching can cause containers to use stale files even after local changes. Rebuild containers after significant schema changes.
+
+---
+
+### Bug #21: TypeScript Type Errors (Prisma Client Stale)
+
+**Date:** 2026-01-14  
+**File:** `apps/worker/src/uptime-state.ts`, `apps/api/src/routes/uptime.ts`  
+**Severity:** 🟡 Medium (TypeScript error)
+
+**Error:**
+```
+Property 'consecutiveFailures' does not exist on type 'SiteUptimeState'.
+Property 'consecutiveSuccesses' does not exist on type 'SiteUptimeState'.
+```
+
+**Root Cause:**  
+Local Prisma Client types weren't regenerated after adding new fields to the schema. TypeScript was referencing stale type definitions.
+
+**Solution:**  
+Ran `pnpm prisma generate` in `apps/api` to regenerate Prisma Client types locally.
+
+**Commands:**
+```bash
+cd apps/api
+pnpm prisma generate
+# Restart TypeScript server in IDE
+```
+
+**Lesson Learned:**  
+User caught that we were inconsistently using `npx` instead of `pnpm`. Always use `pnpm` for this project to stay consistent with the tooling.
+
+---
+
+### Bug #22: Worker Prisma Generate Path Error
+
+**Date:** 2026-01-14  
+**File:** `apps/worker/`  
+**Severity:** 🔴 High (blocking)
+
+**Error:**
+```
+Error: Could not find Prisma Schema at the default location.
+```
+
+**Root Cause:**  
+Worker service doesn't have its own `prisma/schema.prisma`. It needs to point to the API's schema when generating the Prisma Client.
+
+**Solution:**  
+Added `--schema` flag pointing to the API's schema location.
+
+**Command:**
+```bash
+cd apps/worker
+pnpm prisma generate --schema=../api/prisma/schema.prisma
+```
+
+**Lesson Learned:**  
+In a monorepo where services share a schema, services without their own schema file need explicit `--schema` paths for Prisma Client generation.
+
+---
+
+### Bug #23: Silent Logging Failure (Containerized Worker)
+
+**Date:** 2026-01-14  
+**File:** `apps/worker/src/uptime-state.ts`  
+**Severity:** 🔴 High (debugging blocked)
+
+**Error:**
+No error message. `fetch()` calls to `http://localhost:9999/log` from worker container failed silently. Expected logs in `debug.log` but file remained empty.
+
+**Root Cause:**  
+Worker container couldn't reach host's logging endpoint at `localhost:9999`. Network isolation between container and host prevented connection.
+
+**Solution:**  
+Replaced `fetch()` logging with `console.log()` statements using distinct prefixes (`[DEBUG-A]`, `[DEBUG-B]`), then extracted logs from Docker container output.
+
+**Code Change:**
+```typescript
+// ❌ Before (failed silently)
+await fetch("http://localhost:9999/log", {
+  method: "POST",
+  body: JSON.stringify(data)
+});
+
+// ✅ After (works in container)
+console.log(`[DEBUG-A] ${JSON.stringify(data)}`);
+```
+
+**Commands:**
+```bash
+# Extract debug logs
+docker compose logs worker | grep "DEBUG-"
+```
+
+**Lesson Learned:**  
+Containers can't reach `localhost` services on the host without special networking config. Use `console.log` for containerized debugging or use `host.docker.internal`.
+
+---
+
+### Bug #24: Logic Bug - First Check Immediately Marks DOWN
+
+**Date:** 2026-01-14  
+**File:** `apps/worker/src/uptime-state.ts`  
+**Severity:** 🔴 Critical (business logic bug)
+
+**Error:**
+Site marked as DOWN immediately after first failed check, despite `confirmationsRequired: 2` configuration.
+
+**Root Cause:**  
+Confirmation system wasn't accounting for the initial state creation. When a site's first check failed, the logic immediately transitioned to DOWN without requiring confirmation.
+
+**Solution:**  
+Modified `updateUptimeState()` to initialize state optimistically as "UP" and start tracking `consecutiveFailures` from 1. Site only transitions to DOWN after confirmation threshold is reached on subsequent failures.
+
+**Code Change:**
+```typescript
+// ❌ Before (immediate transition)
+if (!currentState) {
+  await prisma.siteUptimeState.create({
+    data: {
+      siteId,
+      state: newState, // DOWN on first failure
+      // ...
+    }
+  });
+}
+
+// ✅ After (optimistic with confirmation)
+if (!currentState) {
+  const initialState: UptimeState = "UP";
+  await prisma.siteUptimeState.create({
+    data: {
+      siteId,
+      state: initialState, // Always UP initially
+      consecutiveFailures: newCheckState === "DOWN" ? 1 : 0,
+      consecutiveSuccesses: newCheckState === "UP" ? 1 : 0,
+      // ...
+    }
+  });
+}
+```
+
+**Lesson Learned:**  
+Edge cases like "first ever check" need explicit handling in state machines. Initial state should align with system's optimistic assumptions.
+
+---
+
+### Bug #25: CLI Script - site_exists Error
+
+**Date:** 2026-01-14  
+**File:** `dryft-check`  
+**Severity:** 🟡 Medium (CLI tool reusability)
+
+**Error:**
+```json
+{
+  "error": "site_exists",
+  "message": "A site with this URL already exists"
+}
+```
+
+**Root Cause:**  
+`dryft-check` script created temporary sites with the same URL on each run. Database unique constraint `(userId, url)` prevented reuse of the same URL.
+
+**Solution:**  
+Added random query parameter to the URL when creating temporary sites, making each URL unique while still checking the same base URL.
+
+**Code Change:**
+```bash
+# ❌ Before (reused same URL)
+CHECK_URL="$URL"
+
+# ✅ After (unique on every run)
+RANDOM_SUFFIX="?_dryft_check=$RANDOM$(date +%s)"
+CHECK_URL="$URL$RANDOM_SUFFIX"
+```
+
+**Lesson Learned:**  
+CLI tools that create temporary resources need unique identifiers to avoid conflicts on repeated use. Query parameters are a simple way to make URLs unique.
+
+---
+
+### Bug #26: CLI Script - null Output for Timeout Cases
+
+**Date:** 2026-01-14  
+**File:** `dryft-check`  
+**Severity:** 🟢 Low (display issue)
+
+**Error:**
+Script displayed `null` for Status, HTTP Code, and Response Time when a site timed out.
+
+**Root Cause:**  
+1. `jq` didn't handle null values gracefully in output
+2. Wait time (10 seconds) wasn't long enough for checks with 10-second timeout + processing time
+
+**Solution:**  
+1. Used jq's `// "N/A"` operator to provide defaults for null values
+2. Increased sleep time from 10s to 12s to allow for timeout + processing
+
+**Code Change:**
+```bash
+# ❌ Before (showed null)
+HTTP_STATUS=$(echo $RESULT | jq -r '.lastHttpStatus')
+DURATION=$(echo $RESULT | jq -r '.lastDurationMs')
+
+# ✅ After (shows N/A for null)
+HTTP_STATUS=$(echo $RESULT | jq -r '.lastHttpStatus // "N/A"')
+DURATION=$(echo $RESULT | jq -r '.lastDurationMs // "N/A"')
+
+# ❌ Before (too short)
+sleep 10
+
+# ✅ After (accounts for timeout)
+sleep 12
+```
+
+**Lesson Learned:**  
+CLI output should handle edge cases gracefully. Null values need explicit handling for user-friendly display.
+
+---
+
+### Bug #27: CLI Script - Confusing Status Display
+
+**Date:** 2026-01-14  
+**File:** `dryft-check`  
+**Severity:** 🟢 Low (UX issue)
+
+**Error:**
+Script showed "ERROR" status for 404 responses but didn't clearly indicate the site was DOWN. Users expected to see UP/DOWN state, not just check status.
+
+**Root Cause:**  
+Script displayed check status (SUCCESS/ERROR/TIMEOUT/BLOCKED) but not the user-relevant state (UP/DOWN). For single checks, the distinction matters for understanding impact.
+
+**Solution:**  
+Updated output to prominently show "Site is UP" or "Site is DOWN" with HTTP codes, making the state clear at a glance.
+
+**Code Change:**
+```bash
+# ❌ Before (ambiguous)
+echo "❌ Site returned ERROR (HTTP $HTTP_STATUS)"
+
+# ✅ After (clear state)
+echo "❌ Site is DOWN"
+echo "   HTTP $HTTP_STATUS (ERROR)"
+```
+
+**Lesson Learned:**  
+CLI tools should present information in user-centric terms. "DOWN" is more meaningful than "ERROR" for understanding site availability.
+
+---
+
+## Bug Categories
+
+### 📦 TypeScript Type Errors (7 bugs)
+- **Bug #1:** IORedis constructor
+- **Bug #2:** IORedis type mismatch
+- **Bug #7:** JWT_SECRET missing
+- **Bug #8:** Prisma user model types
+- **Bug #10:** Duplicate type declarations
+- **Bug #19:** Prisma siteCheck types (IDE)
+- **Bug #21:** Stale Prisma types after schema changes *(NEW)*
+
+### 🐳 Docker/Environment Issues (8 bugs)
+- **Bug #5:** Environment variable expansion
+- **Bug #11:** Docker Compose env_file path
+- **Bug #13:** Missing database tables
+- **Bug #14:** Database authentication
+- **Bug #16:** Doubled schema path
+- **Bug #17:** Migration conflicts
+- **Bug #18:** Prisma Client not regenerated in containers
+- **Bug #20:** Docker container stale schema cache *(NEW)*
+
+### 🗄️ Prisma Schema/Migration (7 bugs)
+- **Bug #6:** Datasource URL required
+- **Bug #13:** Tables not created
+- **Bug #15:** Prisma 7 breaking change
+- **Bug #17:** Migration conflict
+- **Bug #18:** Client generation needed
+- **Bug #20:** Container schema sync *(NEW)*
+- **Bug #22:** Worker schema path *(NEW)*
+
+### 📁 Import/Module Resolution (2 bugs)
+- **Bug #3:** IDE module resolution cache
+- **Bug #4:** .ts vs .js extension
+
+### 🔧 Configuration Errors (3 bugs)
+- **Bug #9:** Missing userId in site creation
+- **Bug #12:** Undefined helper function
+- **Bug #16:** Path resolution in Docker
+
+### 🐛 Logic Bugs (1 bug)
+- **Bug #24:** First check confirmation logic *(NEW)*
+
+### 🖥️ CLI/Tooling Issues (3 bugs)
+- **Bug #25:** site_exists constraint *(NEW)*
+- **Bug #26:** null value handling *(NEW)*
+- **Bug #27:** Status display clarity *(NEW)*
+
+### 🔍 Debugging Issues (1 bug)
+- **Bug #23:** Silent fetch failures in containers *(NEW)*
+
+---
+
+## Statistics
+
+**Total Bugs:** 27 *(+8 new)*  
+**Development Time:** 4 days  
+**Average Resolution Time:** ~15 minutes per bug  
+**Total Debug Time:** ~7 hours across 4 days  
+
+### By Severity
+- 🔴 **Critical:** 6 bugs (22%)
+- 🔴 **High:** 9 bugs (33%)
+- 🟡 **Medium:** 9 bugs (33%)
+- 🟢 **Low:** 3 bugs (11%)
+
+### By Category
+- 🐳 **Docker/Environment:** 8 bugs (30%)
+- 🗄️ **Prisma/Database:** 7 bugs (26%)
+- 📦 **TypeScript Types:** 7 bugs (26%)
+- 🖥️ **CLI/Tooling:** 3 bugs (11%)
+- 🔧 **Configuration:** 3 bugs (11%)
+- 📁 **Import/Module:** 2 bugs (7%)
+- 🐛 **Logic Bugs:** 1 bug (4%)
+- 🔍 **Debugging:** 1 bug (4%)
+
+*Note: Some bugs span multiple categories*
+
+### Resolution Time Distribution
+- ⚡ **< 5 minutes:** 8 bugs (quick fixes, typos)
+- ⏱️ **5-15 minutes:** 12 bugs (standard debugging)
+- ⏰ **15-30 minutes:** 5 bugs (required research)
+- 🐌 **> 30 minutes:** 2 bugs (Bug #15, #17 - required full reset)
+
+### Most Recent Session (Bugs #20-27)
+- **Date:** 2026-01-14
+- **Focus:** Brick 4 (Confirmation System) + CLI tooling
+- **Total Bugs:** 8
+- **Highlights:**
+  - Fixed critical confirmation logic bug (Bug #24)
+  - Debugged containerized logging (Bug #23)
+  - Polished CLI tool UX (Bugs #25-27)
+  - Prisma sync issues across environments (Bugs #20-22)
+
+---
+
 **END OF BUG JOURNAL**
 
 *This document will be updated as new bugs are discovered and fixed.*
