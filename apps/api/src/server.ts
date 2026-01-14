@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import jwt from "@fastify/jwt";
+import helmet from "@fastify/helmet";
 
 import { env } from "./env.js";
 import { prisma } from "./db.js";
@@ -23,6 +24,36 @@ const app = Fastify({
 // Plugins
 await app.register(jwt, { secret: env.JWT_SECRET });
 await app.register(sensible);
+
+// Security headers
+await app.register(helmet, {
+  // Enable Content Security Policy (restrictive but safe defaults)
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles (common in APIs)
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  },
+  // Strict Transport Security (HTTPS enforcement)
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true
+  },
+  // Additional security headers enabled by default:
+  // - X-Frame-Options: DENY (prevents clickjacking)
+  // - X-Content-Type-Options: nosniff (prevents MIME sniffing)
+  // - X-DNS-Prefetch-Control: off
+  // - X-Download-Options: noopen
+  // - Referrer-Policy: no-referrer
+});
 
 await app.register(cors, {
   origin: (origin, cb) => {

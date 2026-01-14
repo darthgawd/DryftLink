@@ -6,6 +6,7 @@
     "dev": "node --watch --loader ts-node/esm src/server.ts"
   },
   "dependencies": {
+    "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^10.0.0",
     "argon2": "^0.44.0"
   }
