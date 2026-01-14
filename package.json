@@ -2,6 +2,7 @@
   "name": "dryft",
   "private": true,
   "packageManager": "pnpm@9.12.0",
+  "type": "module",
   "scripts": {
     "lint": "eslint .",
     "format": "prettier . --write"

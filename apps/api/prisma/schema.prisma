@@ -6,6 +6,18 @@ datasource db {
   provider = "postgresql"
 }
 
+enum SiteCheckStatus {
+  SUCCESS
+  ERROR
+  TIMEOUT
+  BLOCKED
+}
+
+enum UptimeState {
+  UP
+  DOWN
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -14,7 +26,6 @@ model User {
   updatedAt    DateTime @updatedAt
 
   sites Site[]
-  siteChecks SiteCheck[]
 }
 
 model Site {
@@ -27,23 +38,56 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  checks SiteCheck[]
+  // uptime monitoring
+  checks       SiteCheck[]
+  uptimeState  SiteUptimeState?
+  uptimeEvents UptimeEvent[]
 
   @@unique([userId, url])
+  @@index([userId])
 }
 
 model SiteCheck {
-  id         String   @id @default(cuid())
+  id         String         @id @default(cuid())
   siteId     String
-  userId     String
-  statusCode Int?
-  latencyMs  Int?
-  ok         Boolean  @default(false)
-  error      String?
-  checkedAt  DateTime @default(now())
+  site       Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
-  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status     SiteCheckStatus
+  httpStatus Int?
+  finalUrl   String?
+  durationMs Int?
+  checkedAt  DateTime       @default(now())
 
-  @@index([userId, siteId, checkedAt])
+  @@index([siteId, checkedAt])
+  @@index([checkedAt])
+}
+
+model SiteUptimeState {
+  siteId         String         @id
+  site           Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  state          UptimeState
+  lastStatus     SiteCheckStatus
+  lastHttpStatus Int?
+  lastFinalUrl   String?
+  lastDurationMs Int?
+
+  changedAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model UptimeEvent {
+  id              String         @id @default(cuid())
+  siteId           String
+  site             Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  fromState        UptimeState
+  toState          UptimeState
+  reasonStatus     SiteCheckStatus
+  reasonHttpStatus Int?
+  checkedAt        DateTime
+  createdAt        DateTime       @default(now())
+
+  @@index([siteId, createdAt])
+  @@index([createdAt])
 }

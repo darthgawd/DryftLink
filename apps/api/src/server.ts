@@ -26,7 +26,10 @@ await app.register(sensible);
 
 await app.register(cors, {
   origin: (origin, cb) => {
-    const allowed = env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean) ?? [];
+    const allowed =
+      env.ALLOWED_ORIGINS?.split(",")
+        .map((o) => o.trim())
+        .filter(Boolean) ?? [];
 
     // Allow no-origin only in non-production (curl/Postman)
     if (!origin && env.NODE_ENV !== "production") return cb(null, true);

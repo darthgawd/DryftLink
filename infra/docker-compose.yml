@@ -20,13 +20,14 @@ services:
     # IMPORTANT: no host port mapping — API/worker can still reach redis via "redis:6379" on the Docker network
     env_file:
       - ./.env
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
+    command:
+      ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
-  
+
   api:
     build:
       context: ..

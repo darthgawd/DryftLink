@@ -1,0 +1,375 @@
+# DryftLink - Cursor AI Rules
+
+## 🧠 Project Context
+
+**ALWAYS read these files at the start of a new chat:**
+1. `PROJECT-MEMORY.md` - Complete project history and context
+2. `bug-journal.md` - All bugs encountered and solutions
+3. `DECISIONS.md` - Architecture decision records (when created)
+
+## 👤 Developer Profile
+
+- **Name:** Donson
+- **Style:** AI-Augmented Full-Stack Developer
+- **Approach:** Methodical, values best practices, builds "brick by brick"
+- **Preferences:** Concise explanations, verification steps, systematic debugging
+
+## 🎯 Core Principles
+
+1. **Always verify before suggesting fixes**
+   - Run `pnpm tsc --noEmit` to check types
+   - Test in Docker containers, not just locally
+   - Check actual error in logs before guessing
+
+2. **Document everything**
+   - Add bugs to `bug-journal.md` after fixing
+   - Update `PROJECT-MEMORY.md` after major changes
+   - Keep inline comments clear and helpful
+
+3. **Follow existing patterns**
+   - Look at `apps/api/src/routes/auth.ts` as reference
+   - Match error handling style across all routes
+   - Use same validation patterns (Zod `.safeParse()`)
+
+4. **Test in production-like environment**
+   - Changes must work in Docker
+   - Verify environment variables in containers
+   - Check logs with `docker compose logs <service>`
+
+## 💻 Coding Standards
+
+### TypeScript
+```typescript
+// ✅ DO: Use explicit types
+const user: { id: string; email: string } = await prisma.user.findUnique(...)
+
+// ✅ DO: Use Zod for validation
+const Body = z.object({ email: z.string().email() });
+const parsed = Body.safeParse(req.body);
+
+// ✅ DO: Use .js extensions (NodeNext)
+import { dryftQueue } from "../queue.js";
+
+// ❌ DON'T: Use .ts extensions
+import { dryftQueue } from "../queue.ts";
+
+// ❌ DON'T: Skip error handling
+await prisma.user.create({ data: ... }); // What if it fails?
+```
+
+### Error Handling
+```typescript
+// ✅ DO: Return structured errors
+if (!site) {
+  return reply.code(404).send({ error: "site_not_found" });
+}
+
+// ✅ DO: Use try-catch for async operations
+try {
+  await prisma.user.create({ data });
+} catch (err) {
+  // Handle specific Prisma errors
+}
+
+// ❌ DON'T: Throw raw errors to client
+throw new Error("Something went wrong"); // Exposes internals
+```
+
+### Database (Prisma)
+```typescript
+// ✅ DO: Select only needed fields
+const site = await prisma.site.findUnique({
+  where: { id },
+  select: { id: true, url: true }
+});
+
+// ✅ DO: Include user ownership checks
+where: { id: siteId, userId }
+
+// ❌ DON'T: Fetch all fields unnecessarily
+const site = await prisma.site.findUnique({ where: { id } });
+```
+
+### Authentication
+```typescript
+// ✅ DO: Use authenticate middleware
+app.post("/sites", { preHandler: authenticate }, async (req, reply) => {
+  const userId = getUserId(req);
+  // ...
+});
+
+// ❌ DON'T: Skip authentication on user-specific routes
+app.post("/sites", async (req, reply) => {
+  // Missing auth!
+});
+```
+
+## 🔧 Development Workflow
+
+### After Schema Changes
+```bash
+# 1. Generate migration (in Docker)
+docker compose exec api pnpm prisma migrate dev --name <description>
+
+# 2. Regenerate Prisma Client (both services)
+docker compose exec api npx prisma generate
+docker compose exec worker npx prisma generate
+
+# 3. Regenerate locally (for IDE)
+pnpm prisma generate --schema=apps/api/prisma/schema.prisma
+
+# 4. Restart TypeScript server in IDE
+```
+
+### Debugging Checklist
+- [ ] Read FULL error message (not just first line)
+- [ ] Check if it's IDE cache (restart TS server)
+- [ ] Verify in Docker container, not just locally
+- [ ] Check container logs: `docker compose logs <service> --tail=50`
+- [ ] Verify env vars: `docker compose exec <service> env | grep <VAR>`
+- [ ] Check if Prisma Client is up to date
+- [ ] Try rebuilding Docker image if nothing works
+
+### Before Committing
+- [ ] Run `pnpm tsc --noEmit`
+- [ ] Remove debug `console.log` statements
+- [ ] Check `.env` files are gitignored
+- [ ] Update relevant documentation
+- [ ] Test in Docker environment
+- [ ] Add bug to `bug-journal.md` if one was fixed
+
+## 🐛 Common Issues & Solutions
+
+### "Property X does not exist on PrismaClient"
+**Cause:** Stale Prisma Client  
+**Fix:** Run `npx prisma generate` in container and locally
+
+### "Cannot find module '../X.js'"
+**Cause:** IDE cache or wrong extension  
+**Fix:** Verify `.js` extension, restart TS server, run `tsc --noEmit`
+
+### "Type 'Redis' is not assignable to type 'ConnectionOptions'"
+**Cause:** ioredis version mismatch with BullMQ  
+**Fix:** Use `connection as any` (documented workaround)
+
+### "relation already exists" (Prisma migration)
+**Cause:** Migration history out of sync  
+**Fix:** Reset DB, delete migrations, rebuild Docker, create fresh migration
+
+### Worker job fails with "Cannot read properties of undefined"
+**Cause:** Prisma Client not regenerated in worker  
+**Fix:** `docker compose exec worker npx prisma generate`
+
+## 🚨 Security Rules
+
+### NEVER
+- ❌ Commit `.env` files
+- ❌ Hardcode credentials in code
+- ❌ Skip input validation on user inputs
+- ❌ Return raw database errors to client
+- ❌ Store passwords in plaintext
+- ❌ Skip rate limiting on public endpoints
+
+### ALWAYS
+- ✅ Use JWT for authentication
+- ✅ Hash passwords with Argon2
+- ✅ Validate all inputs with Zod
+- ✅ Add rate limiting to routes
+- ✅ Check user ownership (userId in where clause)
+- ✅ Use HTTPS in production
+- ✅ Set proper CORS origins
+
+## 📝 File Conventions
+
+### Naming
+- Routes: `apps/api/src/routes/<resource>.ts` (lowercase, plural)
+- Utilities: `apps/api/src/<utility>.ts` (lowercase, singular)
+- No uppercase filenames (except README, DECISIONS, etc.)
+
+### Structure
+```typescript
+// Route file structure:
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { prisma } from "../db.js";
+import { authenticate, getUserId } from "../auth.js";
+
+// Zod schemas at top
+const Body = z.object({ ... });
+
+// Route registration
+export async function resourceRoutes(app: FastifyInstance) {
+  app.get("/resource", { preHandler: authenticate }, async (req, reply) => {
+    // Handler logic
+  });
+}
+```
+
+## 🎯 Response Style Preferences
+
+### Explanations
+- ✅ Concise and to the point
+- ✅ Include verification steps
+- ✅ Show before/after code snippets
+- ✅ Explain WHY, not just WHAT
+- ❌ Avoid long-winded explanations
+- ❌ Don't repeat yourself
+
+### Problem Solving
+- ✅ Read error messages carefully
+- ✅ Check project memory for past similar issues
+- ✅ Suggest specific, testable fixes
+- ✅ Provide commands to verify fix
+- ❌ Don't guess if you can verify
+- ❌ Don't suggest workarounds before trying proper fix
+
+### Code Changes
+- ✅ Show full context (imports, exports)
+- ✅ Use inline comments for clarity
+- ✅ Follow existing code style exactly
+- ✅ Test changes in Docker before marking complete
+- ❌ Don't change formatting/style unnecessarily
+- ❌ Don't remove existing comments
+
+## 🔄 Development Phases
+
+### Current Phase: Documentation (Brick 1)
+**Goals:**
+- Complete README.md
+- Create .env.example files
+- Document all API endpoints
+- Commit to GitHub
+
+**Rules:**
+- No new features yet
+- Focus on documentation quality
+- Make setup instructions crystal clear
+
+### Next Phase: Scheduled Checks (Brick 2)
+**Will include:**
+- Cron-based check scheduling
+- Per-site interval configuration
+- Start/stop on site create/delete
+
+### Future Phases
+See `PROJECT-MEMORY.md` for complete roadmap
+
+## 🧪 Testing Guidelines
+
+### Manual Testing Commands
+```bash
+# Health check
+curl http://localhost:3002/health
+
+# Register user
+curl -X POST http://localhost:3002/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+
+# Login
+curl -X POST http://localhost:3002/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+
+# Create site (with token)
+curl -X POST http://localhost:3002/sites \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Example","url":"https://example.com"}'
+
+# Trigger check
+curl -X POST http://localhost:3002/sites/<SITE_ID>/check \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+## 📊 Architecture Patterns
+
+### Job Queue Pattern
+```typescript
+// API: Enqueue job
+const job = await dryftQueue.add("check_site", { siteId });
+return reply.code(202).send({ jobId: job.id });
+
+// Worker: Process job
+export const worker = new Worker(QUEUE_NAME, async (job) => {
+  const { siteId } = job.data;
+  // Perform work
+  await prisma.siteCheck.create({ data: { ... } });
+});
+```
+
+### Authentication Pattern
+```typescript
+// Define middleware
+export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    await request.jwtVerify();
+  } catch (err) {
+    return reply.code(401).send({ error: "unauthorized" });
+  }
+}
+
+// Use in routes
+app.post("/resource", { preHandler: authenticate }, async (req, reply) => {
+  const userId = getUserId(req);
+  // ...
+});
+```
+
+### Pagination Pattern
+```typescript
+// Cursor-based (preferred)
+const sites = await prisma.site.findMany({
+  where: { userId },
+  take: limit + 1,
+  cursor: cursor ? { id: cursor } : undefined,
+  orderBy: { createdAt: "desc" }
+});
+
+const hasMore = sites.length > limit;
+if (hasMore) sites.pop();
+
+return { sites, hasMore, nextCursor: hasMore ? sites[sites.length - 1].id : null };
+```
+
+## 🎓 Learning Resources
+
+- Prisma Docs: https://www.prisma.io/docs
+- Fastify Docs: https://fastify.dev
+- BullMQ Docs: https://docs.bullmq.io
+- Check `bug-journal.md` for real-world debugging examples
+
+## 🚀 Quick Reference
+
+### Environment Variables (API)
+- `NODE_ENV` - development | production
+- `API_PORT` - Default 3002
+- `DATABASE_URL` - PostgreSQL connection string
+- `REDIS_URL` - Redis connection string
+- `JWT_SECRET` - Min 32 characters
+- `ALLOWED_ORIGINS` - CORS origins (comma-separated)
+
+### Environment Variables (Worker)
+- `NODE_ENV` - development | production
+- `DATABASE_URL` - PostgreSQL connection string
+- `REDIS_URL` - Redis connection string
+- `WORKER_CONCURRENCY` - Default 10
+
+### Docker Services
+- `postgres` - PostgreSQL 16 (port 5432)
+- `redis` - Redis 7 (no external port, internal only)
+- `api` - Fastify API (port 3002)
+- `worker` - BullMQ worker (no port)
+
+## 💡 Remember
+
+1. **Read `PROJECT-MEMORY.md` first** in every new chat
+2. **Check `bug-journal.md`** if encountering errors (probably solved before)
+3. **Test in Docker** - local may work but Docker is truth
+4. **Document bugs** - add to bug-journal.md after fixing
+5. **Build brick by brick** - complete current phase before starting next
+6. **Ask if unclear** - don't assume requirements
+
+---
+
+**This project uses AI-augmented development workflows. You are a coding partner, not just a code generator. Focus on architecture, debugging, and best practices.**
