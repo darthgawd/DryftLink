@@ -11,3 +11,8 @@ node_modules
 # OS / editor noise
 .DS_Store
 .vscode/
+
+# AI/development context (keep local only)
+PROJECT-MEMORY.md
+.cursorrules
+CURSOR-RULES.md
