@@ -4,6 +4,7 @@ import { connection, QUEUE_NAME } from "./queue.js";
 import { env } from "./env.js";
 import { prisma } from "./db.js";
 import { updateUptimeState } from "./uptime-state.js";
+import { createSnapshot } from "./snapshot.js";
 
 const JobData = z.object({
   siteId: z.string().min(1)
@@ -81,6 +82,33 @@ export const worker = new Worker(
       finalUrl,
       durationMs
     });
+
+    // Capture snapshot (HTML + fingerprint) for change detection, if check succeeded
+    if (status === "SUCCESS") {
+      try {
+        const htmlResponse = await fetch(site.url, {
+          method: "GET",
+          signal: AbortSignal.timeout(10000)
+        });
+
+        if (htmlResponse.ok) {
+          const htmlBody = await htmlResponse.text();
+          
+          // Convert Headers to plain object
+          const headers: Record<string, string | string[] | undefined> = {};
+          htmlResponse.headers.forEach((value, key) => {
+            headers[key] = value;
+          });
+
+          // Create snapshot asynchronously (non-blocking)
+          await createSnapshot(siteId, htmlBody, htmlResponse.status, headers);
+        }
+      } catch (err) {
+        // Snapshot capture failed, but don't fail the job
+        // Log error for debugging
+        console.error(`Failed to capture snapshot for site ${siteId}:`, err);
+      }
+    }
 
     return { status, httpStatus, durationMs };
   },

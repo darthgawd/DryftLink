@@ -18,6 +18,13 @@ enum UptimeState {
   DOWN
 }
 
+enum ChangeLevel {
+  NONE
+  MINOR
+  MODERATE
+  MAJOR
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -49,6 +56,9 @@ model Site {
   checks       SiteCheck[]
   uptimeState  SiteUptimeState?
   uptimeEvents UptimeEvent[]
+
+  // change detection
+  snapshots    SiteSnapshot[]
 
   @@unique([userId, url])
   @@index([userId])
@@ -98,6 +108,34 @@ model UptimeEvent {
   reasonHttpStatus Int?
   checkedAt        DateTime
   createdAt        DateTime       @default(now())
+
+  @@index([siteId, createdAt])
+  @@index([createdAt])
+}
+
+model SiteSnapshot {
+  id                 String         @id @default(cuid())
+  siteId             String
+  site               Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  // Full HTML capture
+  htmlBody           String
+  htmlSize           Int
+
+  // Response metadata
+  statusCode         Int
+  headers            Json
+
+  // Diff tracking
+  previousSnapshotId String?
+  previousSnapshot   SiteSnapshot?  @relation("SnapshotDiff", fields: [previousSnapshotId], references: [id], onDelete: SetNull)
+  nextSnapshots      SiteSnapshot[] @relation("SnapshotDiff")
+
+  // Computed diff
+  diffSummary        Json?
+  changeLevel        ChangeLevel    @default(NONE)
+
+  createdAt          DateTime       @default(now())
 
   @@index([siteId, createdAt])
   @@index([createdAt])
