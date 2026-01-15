@@ -21,13 +21,19 @@ export const worker = new Worker(
     const { siteId } = parsed.data;
 
     // Fetch site for checking
+
     const site = await prisma.site.findUnique({
       where: { id: siteId },
-      select: { id: true, url: true }
+      select: { id: true, url: true, isMonitoringEnabled: true }
     });
 
     if (!site) {
       throw new Error("site_not_found");
+    }
+
+    // Skip processing if monitoring is disabled
+    if (site.isMonitoringEnabled === false) {
+      return { status: "SKIPPED", httpStatus: null, durationMs: 0 };
     }
 
     const startTime = Date.now();

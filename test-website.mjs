@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+/* global console */
 import express from "express";
 
 const app = express();

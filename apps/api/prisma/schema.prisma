@@ -140,3 +140,7 @@ model SiteSnapshot {
   @@index([siteId, createdAt])
   @@index([createdAt])
 }
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "./erd/diagram.svg"
+}
